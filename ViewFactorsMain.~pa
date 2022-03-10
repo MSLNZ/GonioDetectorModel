@@ -1,0 +1,1027 @@
+unit ViewFactorsMain;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
+	StdCtrls, Math, ComCtrls, LinearAlgebra;
+
+const
+	NGauLeg=50;
+	N=10;
+
+type
+	TBeamArray=array[-N..N,-N..N] of Extended;
+	TBeamDataArray=array[1..NGauLeg,1..NGauLeg] of Extended;
+  TMainForm = class(TForm)
+    CalculateButton: TButton;
+		Memo: TMemo;
+    ProgressBar: TProgressBar;
+    GroupBox1: TGroupBox;
+    GroupBox2: TGroupBox;
+    Label4: TLabel;
+    SourceDEdit: TEdit;
+    Label1: TLabel;
+    DetectorDEdit: TEdit;
+    ALabel: TLabel;
+    BLabel: TLabel;
+    Label3: TLabel;
+    LEdit: TEdit;
+    Label5: TLabel;
+    GroupBox3: TGroupBox;
+    ViewFactorLabel2: TLabel;
+    ViewFactorLabel1: TLabel;
+    VFTitleLabel1: TLabel;
+    VFTitleLabel2: TLabel;
+    GroupBox4: TGroupBox;
+    Label10: TLabel;
+		YawEdit: TEdit;
+		Label11: TLabel;
+    PitchEdit: TEdit;
+    Label6: TLabel;
+    DeltaEdit: TEdit;
+		YawScanCheckBox: TCheckBox;
+    PitchScanCheckBox: TCheckBox;
+    DeltaScanCheckBox: TCheckBox;
+		ScanParametersGroupBox: TGroupBox;
+		EndAngleLabel: TLabel;
+    EndAngleEdit: TEdit;
+    NumAnglesLabel: TLabel;
+		NumAnglesEdit: TEdit;
+    PolarCheckBox: TCheckBox;
+    Label2: TLabel;
+    FileNameEdit: TEdit;
+    BrowseButton: TButton;
+    OpenDialog: TOpenDialog;
+    BeamDataCheckBox: TCheckBox;
+    UniformCheckBox: TCheckBox;
+    GroupBox5: TGroupBox;
+    Label7: TLabel;
+    Label8: TLabel;
+    NGauLegEdit: TEdit;
+    NEdit: TEdit;
+
+		procedure CalculateButtonClick(Sender: TObject);
+    procedure FormResize(Sender: TObject);
+		procedure FormCreate(Sender: TObject);
+		procedure YawScanCheckBoxClick(Sender: TObject);
+		procedure PitchScanCheckBoxClick(Sender: TObject);
+    procedure DeltaScanCheckBoxClick(Sender: TObject);
+    procedure EditChange(Sender: TObject);
+		procedure BrowseButtonClick(Sender: TObject);
+
+  private
+		{ Private declarations }
+		function ValidDlgReal(TheEdit:TEdit;MinB:Char;Min,Max:Extended;
+							MaxB:Char;NilAllowed:Boolean;
+							ErrorMessage,RangeMessage:string;var Valid:Boolean):Extended;
+		function ValidDlgInteger(TheEdit:TEdit;Min,Max:Longint;NilAllowed:Boolean;
+					ErrorMessage,RangeMessage:string;var Valid:Boolean):Integer;
+		function CheckValidInputs:Boolean;
+		procedure CalculateViewFactors;
+		function ReadBeamFile:Boolean;
+		procedure CalculateArea;
+		procedure CalculateSignal;
+		function Func(X,Y,Z,W:Extended):Extended;
+		procedure Quad4D(X1,X2:Extended; var SS:Extended);
+		procedure CreateUniformBeam;
+  public
+		{ Public declarations }
+  end;
+
+var
+	MainForm: TMainForm;
+	GauLegX,GauLegW:array[1..NGauLeg] of Extended;
+	glx,gly,glz:Extended;
+	StartYaw,StartPitch,StartDelta,EndAngle:Extended;
+	R,A,B,L,CosYaw,SinYaw,CosPitch,SinPitch:Extended;
+	SourceD,DetectorD,SinDelta,CosDelta:Extended;
+	MemoTop,NAngles,ii,jj:Integer;
+	Calculating,Scanning,Polar,BeamData:Boolean;
+	Beam:TBeamArray;
+	Area,Signal:TBeamDataArray;
+
+implementation
+
+{$R *.DFM}
+
+{.......................................................}
+
+function CalculateDistance(X1,X2,Y1,Y2:Extended):Extended;
+var
+	dx,dy,dSqr,d:Extended;
+begin
+	dx:=X2-X1;
+	dy:=Y2-Y1;
+	dSqr:=Sqr(dx)+Sqr(dy);
+	d:=Sqrt(dSqr);
+	CalculateDistance:=d;
+end;
+
+function InterpolateBeamData(R,Phi:Extended):Extended;
+var
+	x,y,dx1,dx2,dy1,dy2,d1,d2,d3,d4:Extended;
+	p1,p2,p3,p4,num,den:Extended;
+	x1,x2,y1,y2:Integer;
+begin
+	if Polar then
+	begin
+		x:=R*Cos(Phi);
+		y:=R*Sin(Phi);
+	end
+	else
+	begin
+		x:=R;
+		y:=Phi;
+	end;
+	x1:=Trunc(x);
+	if x<0 then
+		x2:=x1-1
+	else
+		x2:=x1+1;
+	y1:=Trunc(y);
+	if y<0 then
+		y2:=y1-1
+	else
+		y2:=y1+1;
+	dx1:=Sqr(x1-x);
+	dx2:=Sqr(x2-x);
+	dy1:=Sqr(y1-y);
+	dy2:=Sqr(y2-y);
+	d1:=Sqrt(dx1+dy1);
+	d2:=Sqrt(dx2+dy1);
+	d3:=Sqrt(dx1+dy2);
+	d4:=Sqrt(dx2+dy2);
+	p1:=Beam[x1,y1];
+	p2:=Beam[x2,y1];
+	p3:=Beam[x1,y2];
+	p4:=Beam[x2,y2];
+	num:=p1/d1+p2/d2+p3/d3+p4/d4;
+	den:=1/d1+1/d2+1/d3+1/d4;
+	InterpolateBeamData:=num/den;
+end;
+
+{.......................................................}
+
+procedure GauLeg(X1,X2:Extended;N:Integer);
+(* Programs using routine GAULEG must define the type
+TYPE
+   darray=ARRAY [1..n] OF double;
+in the calling program *)
+const
+	 eps=3.0e-17; (* adjust to your floating precision *)
+var
+	m,j,i:Integer;
+	z1,z,xm,xl,pp,p3,p2,p1:Extended;
+begin
+	m:=(N+1) div 2;
+	xm:=0.5*(X2+X1);
+	xl:=0.5*(X2-X1);
+	for i:=1 to m do
+	begin
+		z:=Cos(3.141592654*(i-0.25)/(N+0.5));
+		repeat
+			p1:=1.0;
+			p2:=0.0;
+			for j:=1 to N do
+			begin
+				p3:=p2;
+				p2:=p1;
+				p1:=((2.0*j-1.0)*z*p2-(j-1.0)*p3)/j;
+			end;
+			pp:=N*(z*p1-p2)/(z*z-1.0);
+			z1:=z;
+			z:=z1-p1/pp;
+		until Abs(z-z1)<=eps;
+		GauLegX[i]:=xm-xl*z;
+		GauLegX[n+1-i]:=xm+xl*z;
+		GauLegW[i]:=2.0*xl/((1.0-z*z)*pp*pp);
+		GauLegW[n+1-i]:=GauLegW[i];
+	end;
+end;
+
+{.......................................................}
+
+procedure TMainForm.FormResize(Sender: TObject);
+begin
+	Memo.Height:=ClientHeight-MemoTop;
+	ProgressBar.Width:=ClientWidth-20;
+end;
+
+procedure TMainForm.FormCreate(Sender: TObject);
+begin
+	MemoTop:=Memo.Top;
+	Calculating:=False;
+	GauLeg(-1,1,NGauLeg);
+	VFTitleLabel1.Visible:=False;
+	VFTitleLabel2.Visible:=False;
+	ViewFactorLabel1.Visible:=False;
+	ViewFactorLabel2.Visible:=False;
+end;
+
+{.......................................................}
+
+function TMainForm.CheckValidInputs: Boolean;
+var
+	valid:Boolean;
+	m1,m2,S:string;
+	theEdit:TEdit;
+begin
+	m1:='Source diameter must be a real number.';
+	m2:='Source diameter must be greater than 0.';
+	SourceD:=ValidDlgReal(SourceDEdit,'(',0,0,'i',False,m1,m2,valid);
+	if valid then
+	begin
+		m1:='Detector diameter must be a real number.';
+		m2:='Detector diameter must be greater than 0.';
+		DetectorD:=ValidDlgReal(DetectorDEdit,'(',0,0,'i',False,m1,m2,valid);
+	end;
+	if valid then
+	begin
+		m1:='Distance from sample must be a real number.';
+		m2:='Distance from sample must be greater than 0.';
+		L:=ValidDlgReal(LEdit,'(',0,0,'i',False,m1,m2,valid);
+	end;
+	if valid then
+	begin
+		m1:='Yaw must be a real number.';
+		m2:='Yaw must greater than -180° and less than or equal to 180°.';
+		StartYaw:=ValidDlgReal(YawEdit,'(',-180,180,']',False,m1,m2,valid);
+	end;
+	if valid then
+	begin
+		m1:='Pitch must be a real number.';
+		m2:='Pitch must greater than -180° and less than or equal to 180°.';
+		StartPitch:=ValidDlgReal(PitchEdit,'(',-180,180,']',False,m1,m2,valid);
+	end;
+	if valid then
+	begin
+		m1:='Delta must be a real number.';
+		m2:='Delta must greater than -180° and less than or equal to 180°.';
+		StartDelta:=ValidDlgReal(DeltaEdit,'(',-180,180,']',False,m1,m2,valid);
+	end;
+	Scanning:=False;
+	NAngles:=1;
+	if YawScanCheckBox.Checked then
+	begin
+		Scanning:=True;
+		theEdit:=YawEdit;
+		S:='Yaw';
+	end
+	else
+		if PitchScanCheckBox.Checked then
+		begin
+			Scanning:=True;
+			theEdit:=PitchEdit;
+			S:='Pitch';
+		end
+		else
+			if DeltaScanCheckBox.Checked then
+			begin
+				Scanning:=True;
+				theEdit:=DeltaEdit;
+				S:='Delta';
+			end;
+	if valid and Scanning then
+	begin
+		m1:='End angle for '+S+' must be a real number.';
+		m2:='End angle for '+S+' must greater than or equal to '+theEdit.Text+'° and less than or equal to 180°.';
+		EndAngle:=ValidDlgReal(EndAngleEdit,'[',StrToFloat(theEdit.Text),180,']',False,m1,m2,valid);
+		if valid then
+		begin
+			m1:='Number of Yaw values must be an integer.';
+			m2:='Number of Yaw values must be from 1 to 1000000.';
+			NAngles:=ValidDlgInteger(NumAnglesEdit,1,1000000,False,m1,m2,valid);
+		end;
+	end;
+	CheckValidInputs:=valid;
+end;
+
+{.......................................................}
+
+function TMainForm.ValidDlgReal(TheEdit:TEdit;MinB:Char;Min,Max:Extended;
+							MaxB:Char;NilAllowed:Boolean;
+							ErrorMessage,RangeMessage:string;var Valid:Boolean):Extended;
+var
+	number:Extended;
+	code:Integer;
+begin
+	Valid:=True;
+	if TheEdit.Text='' then
+	begin
+		if not NilAllowed then
+		begin
+			Valid:=False;
+			if ErrorMessage<>'' then
+				Application.MessageBox(PChar(ErrorMessage),'Invalid Input',mb_IconStop or mb_Ok);
+		end;
+		ValidDlgReal:=0;
+	end
+	else
+	begin
+		Val(TheEdit.Text,number,code);
+		if (code<>0) or (TheEdit.Text[1]='.')
+				 or ((TheEdit.Text[1]='-') and (TheEdit.Text[2]='.'))  then
+		begin
+			Valid:=False;
+			if ErrorMessage<>'' then
+				Application.MessageBox(PChar(ErrorMessage),'Invalid Input',mb_IconStop or mb_Ok);
+		end
+		else
+		begin
+			if MinB='[' then
+				if number<Min then
+					Valid:=False;
+			if MinB='(' then
+				if number<=Min then
+					Valid:=False;
+			if MaxB=']' then
+				if number>Max then
+					Valid:=False;
+		 	if MaxB=')' then
+				if number>=Max then
+					Valid:=False;
+			if not Valid and (RangeMessage<>'') then
+				Application.MessageBox(PChar(RangeMessage),'Invalid Range',mb_IconStop or mb_Ok);
+		end;
+		if Valid then
+			ValidDlgReal:=number
+		else
+    	ValidDlgReal:=0;
+	end;
+	if not Valid and (ErrorMessage<>'') and (RangeMessage<>'')then
+	begin
+		TheEdit.SelectAll;
+		TheEdit.SetFocus;
+	end;
+end;
+
+{.......................................................}
+
+function TMainForm.ValidDlgInteger(TheEdit:TEdit;Min,Max:Longint;NilAllowed:Boolean;
+					ErrorMessage,RangeMessage:string;var Valid:Boolean):Longint;
+var
+	code:Integer;
+	number:Longint;
+begin
+	Valid:=True;
+	if TheEdit.Text='' then
+	begin
+		if not NilAllowed then
+		begin
+			Valid:=False;
+			Application.MessageBox(PChar(ErrorMessage),'Invalid Input',mb_IconStop or mb_Ok);
+		end;
+		ValidDlgInteger:=0;
+	end
+	else
+	begin
+		Val(TheEdit.Text,number,code);
+		if (code<>0) or ((Length(TheEdit.Text)=1) and (TheEdit.Text[1]='-'))	then
+    begin
+			Valid:=False;
+			Application.MessageBox(PChar(ErrorMessage),'Invalid Input',mb_IconStop or mb_Ok);
+		end
+		else
+		begin
+			if number<Min then
+					Valid:=False;
+			if number>Max then
+					Valid:=False;
+			if not Valid then
+				Application.MessageBox(PChar(RangeMessage),'Invalid Range',mb_IconStop or mb_Ok);
+		end;
+		if Valid then
+			ValidDlgInteger:=number
+		else
+			ValidDlgInteger:=0;
+	end;
+	if not Valid then
+	begin
+		TheEdit.SelectAll;
+		TheEdit.SetFocus;
+	end;
+end;
+
+{.......................................................}
+
+function GauLegY1(X:Extended):Extended;
+begin
+	if Polar then
+		GauLegY1:=0
+	else
+		if BeamData then
+			GauLegY1:=-Sqrt(Sqr(R)-Sqr(X))
+			else
+				GauLegY1:=-B*Sqrt(1-Sqr(X/A));
+end;
+
+{.......................................................}
+
+function GauLegY2(X:Extended):Extended;
+begin
+	if Polar then
+		GauLegY2:=2*Pi
+	else
+		if BeamData then
+			GauLegY2:=Sqrt(Sqr(R)-Sqr(X))
+			else
+				GauLegY2:=B*Sqrt(1-Sqr(X/A));
+end;
+
+{.......................................................}
+
+function GauLegZ1(X,Y:Extended):Extended;
+begin
+	if Polar then
+		GauLegZ1:=0
+	else
+		if BeamData then
+			GauLegZ1:=-N
+			else
+				GauLegZ1:=-R;
+end;
+
+{.......................................................}
+
+function GauLegZ2(X,Y:Extended):Extended;
+begin
+	if Polar then
+		GauLegZ2:=DetectorD/2
+	else
+		if BeamData then
+			GauLegZ2:=N
+			else
+				GauLegZ2:=R;
+end;
+
+{.......................................................}
+
+function GauLegW1(X,Y,Z:Extended):Extended;
+begin
+	if Polar then
+		GauLegW1:=0
+	else
+		if BeamData then
+			GauLegW1:=-N
+			else
+				GauLegW1:=-Sqrt(Sqr(R)-Sqr(Z));
+end;
+
+{.......................................................}
+
+function GauLegW2(X,Y,Z:Extended):Extended;
+begin
+	if Polar then
+		GauLegW2:=2*Pi
+	else
+		if BeamData then
+			GauLegW2:=N
+			else
+				GauLegW2:=Sqrt(Sqr(R)-Sqr(Z));
+end;
+{.......................................................}
+
+function TMainForm.Func(X,Y,Z,W:Extended):Extended;
+var
+	n1,n2,p1,p2,p2p1,p1p2:TVector;
+	r1,r2,phi1,phi2,cosPhi1,cosPhi2,sinPhi1,sinPhi2:Extended;
+	dSqr,d,cosTheta1,cosTheta2,x1,y1,z1,relativeSignal:Extended;
+	s:string;
+begin
+	if Polar then
+	begin
+		r1:=X;
+		r2:=Z;
+		phi1:=Y;
+		phi2:=W;
+		cosPhi1:=Cos(phi1);
+		cosPhi2:=Cos(phi2);
+		sinPhi1:=Sin(phi1);
+		sinPhi2:=Sin(phi2);
+		n1[1]:=SinYaw*CosPitch;
+		n1[2]:=-SinPitch;
+		n1[3]:=CosYaw*CosPitch;
+		p1[1]:=r1*cosPhi1*CosYaw+r1*sinPhi1*SinYaw*SinPitch;
+		p1[2]:=r1*sinPhi1*CosPitch;
+		p1[3]:=r1*sinPhi1*CosYaw*SinPitch-r1*cosPhi1*SinPitch;
+		n2[1]:=-SinDelta;
+		n2[2]:=0;
+		n2[3]:=-CosDelta;
+		p2[1]:=r2*cosPhi2*CosDelta+L*SinDelta;
+		p2[2]:=r2*sinPhi2;
+		p2[3]:=-r2*cosPhi2*SinDelta+L*CosDelta;
+		p2p1:=VectorSubtraction(p2,p1);
+		p1p2:=VectorSubtraction(p1,p2);
+		dSqr:=DotProduct(p2p1,p2p1);
+		d:=Sqrt(dSqr);
+		cosTheta1:=DotProduct(n1,p2p1)/d;
+		cosTheta2:=DotProduct(n2,p1p2)/d;
+		if BeamData then
+		begin
+			relativeSignal:=InterpolateBeamData(X,Y);
+			Func:=relativeSignal*r1*r2*cosTheta1*cosTheta2/(Pi*dSqr);
+			{Func:=Area[ii,jj]*Signal[ii,jj]*r1*r2*cosTheta1*cosTheta2/(Pi*dSqr);}
+		end
+		else
+			Func:=r1*r2*cosTheta1*cosTheta2/(Pi*dSqr);
+	end
+	else
+	begin
+		x1:=X*CosYaw+Y*SinYaw*SinPitch;
+		y1:=Y*CosPitch;
+		z1:=-X*SinYaw+Y*CosYaw*SinPitch;
+		dSqr:=Sqr(Z-x1)+Sqr(W-y1)+Sqr(L-z1);
+		d:=Sqrt(dSqr);
+		cosTheta1:=Abs((Z-x1)*SinYaw*CosPitch-(W-y1)*SinPitch+(L-z1)*CosYaw*CosPitch)/d;
+		cosTheta2:=Abs(L-z1)/d;
+		if BeamData then
+		begin
+			{relativeSignal:=InterpolateBeamData(X,Y);
+			Func:=relativeSignal*cosTheta1*cosTheta2/(Pi*dSqr);}
+			Func:=Signal[ii,jj]{/Area[ii,jj]}*cosTheta1*cosTheta2/(Pi*dSqr);
+			{s:=IntToStr(ii)+#9+IntToStr(jj)+#9+FloatToStr(Area[ii,jj])+#9+FloatToStr(Signal[ii,jj]);
+			Memo.Lines.Add(s);}
+		end
+		else
+			Func:=cosTheta1*cosTheta2/(Pi*dSqr);
+	end;
+end;
+
+{.......................................................}
+
+procedure TMainForm.Quad4D(X1,X2:Extended; var SS:Extended);
+(* Evaluates 4-dimensional integral with w integration innermost, then
+z integration, y integration, and finally x integration. Unlike FORTRAN version,
+calls QGAUS (here called QGAUS4) recursively. Programs using routine QUAD4D must
+define the integrand by
+FUNCTION func(x,y,z,w: real): real;
+and functions for the limits of integration by
+FUNCTION y1(x: real): real;
+FUNCTION y2(x: real): real;
+FUNCTION z1(x,y: real): real;
+FUNCTION z2(x,y: real): real;
+FUNCTION w1(x,y,z: real): real;
+FUNCTION w2(x,y,z: real): real;
+Also global variables
+VAR
+	 glx,gly,glz: real;
+are required. *)
+
+	procedure QGaus4(A,B:Extended; var SS:Extended; N:Integer);
+	var
+		j:Integer;
+		xr,xm,dx:Extended;
+
+		function F(X:Extended; N:Integer):Extended;
+		var
+			ss:Extended;
+		begin
+			if N=1 then
+			begin
+				ii:=0;
+				jj:=0;
+				glx:=X;
+				QGaus4(GauLegY1(glx),GauLegY2(glx),ss,2);
+				F:=ss;
+			end
+			else
+				if N=2 then
+				begin
+					Inc(ii);
+					jj:=0;
+					gly:=X;
+					QGaus4(GauLegZ1(glx,gly),GauLegZ2(glx,gly),ss,3);
+					F:=ss;
+				end
+				else
+					if N=3 then
+					begin
+						Inc(jj);
+						glz:=X;
+						QGaus4(GauLegW1(glx,gly,glz),GauLegW2(glx,gly,glz),ss,4);
+						F:=ss;
+					end
+					else
+						F:=Func(glx,gly,glz,X);
+		end;
+
+	begin
+		xm:=0.5*(B+A);
+		xr:=0.5*(B-A);
+		SS:=0;
+		for j:=1 to NGauLeg do
+		begin
+			dx:=xr*GauLegX[j];
+			SS:=SS+GauLegW[j]*F(xm+dx,N);
+		end;
+		SS:=xr*ss;
+	end;
+
+begin
+	ii:=0;
+	jj:=0;
+	QGaus4(X1,X2,SS,1);
+end;
+
+{.......................................................}
+
+procedure TMainForm.CalculateButtonClick(Sender: TObject);
+begin
+	Calculating:=not Calculating;
+	if Calculating then
+		if CheckValidInputs then
+		begin
+			CalculateViewFactors;
+			Calculating:=False;
+		end
+		else
+			Calculating:=False;
+	CalculateButton.Caption:='Calculate';
+end;
+
+procedure TMainForm.CalculateViewFactors;
+var
+	i:Integer;
+	value,x,yaw,pitch,delta,yawPrime,startAngle,angle:Extended;
+	withBeamData,withoutBeamData:Extended;
+	valid:Boolean;
+begin
+	Polar:=PolarCheckBox.Checked;
+	BeamData:=BeamDataCheckBox.Checked;
+	valid:=True;
+	if BeamData then
+		if UniformCheckBox.Checked then
+    	CreateUniformBeam
+		else
+			valid:=ReadBeamFile;
+	if valid then
+	begin
+		Screen.Cursor:=crHourGlass;
+		VFTitleLabel1.Visible:=False;
+		VFTitleLabel2.Visible:=False;
+		ViewFactorLabel1.Visible:=False;
+		ViewFactorLabel2.Visible:=False;
+		Memo.Clear;
+		Memo.Lines.Add('Yaw'+#9+'Pitch'+#9+'Delta'+#9+'A'+#9+'B'+#9+'View Factor');
+		CalculateButton.Caption:='Stop';
+		ProgressBar.Max:=NAngles;
+		ProgressBar.Position:=0;
+		R:=DetectorD/2;
+		yaw:=StartYaw;
+		pitch:=StartPitch;
+		delta:=StartDelta;
+		CosDelta:=Cos(delta*Pi/180);
+		SinDelta:=Sin(delta*Pi/180);
+		CosPitch:=Cos(pitch*Pi/180);
+		SinPitch:=Sin(pitch*Pi/180);
+		A:=SourceD/2/Cos(yaw*Pi/180);
+		B:=SourceD/2/CosPitch;
+		if Polar then
+		begin
+			CosYaw:=Cos(yaw*Pi/180);
+			SinYaw:=Sin(yaw*Pi/180);
+		end
+		else
+		begin
+			yawPrime:=yaw-delta;
+			CosYaw:=Cos(yawPrime*Pi/180);
+			SinYaw:=Sin(yawPrime*Pi/180);
+		end;
+		if YawScanCheckBox.Checked then
+		begin
+			startAngle:=StartYaw;
+			if Scanning then
+				ALabel.Caption:='Yaw = ';
+		end
+		else
+			if PitchScanCheckBox.Checked then
+			begin
+				startAngle:=StartPitch;
+				if Scanning then
+					BLabel.Caption:='Pitch = ';
+			end
+			else
+				if DeltaScanCheckBox.Checked then
+					startAngle:=StartDelta;
+		for i:=1 to NAngles do
+		begin
+			if Calculating then
+			begin
+				if NAngles=1 then
+					angle:=startAngle
+				else
+					angle:=startAngle+(i-1)*(EndAngle-startAngle)/(NAngles-1);
+				if Scanning then
+					if YawScanCheckBox.Checked then
+					begin
+						yaw:=angle;
+						A:=SourceD/2/Cos(yaw*Pi/180);
+						if Polar then
+						begin
+							CosYaw:=Cos(yaw*Pi/180);
+							SinYaw:=Sin(yaw*Pi/180);
+						end
+						else
+						begin
+							yawPrime:=yaw-delta;
+							CosYaw:=Cos(yawPrime*Pi/180);
+							SinYaw:=Sin(yawPrime*Pi/180);
+						end;
+					end
+					else
+						if PitchScanCheckBox.Checked then
+						begin
+							pitch:=angle;
+							CosPitch:=Cos(pitch*Pi/180);
+							SinPitch:=Sin(pitch*Pi/180);
+							B:=SourceD/2/CosPitch;
+						end
+						else
+						begin
+							delta:=angle;
+							CosDelta:=Cos(delta*Pi/180);
+							SinDelta:=Sin(delta*Pi/180);
+							if Polar then
+							begin
+								CosYaw:=Cos(yaw*Pi/180);
+								SinYaw:=Sin(yaw*Pi/180);
+							end
+							else
+							begin
+								yawPrime:=yaw-delta;
+								CosYaw:=Cos(yawPrime*Pi/180);
+								SinYaw:=Sin(yawPrime*Pi/180);
+							end;
+						end;
+				if Polar then
+				begin
+					if BeamData then
+					begin
+						Quad4D(0,SourceD/2,value);
+						value:=value/(Pi*Sqr(SourceD/2));
+					end
+					else
+					begin
+						Quad4D(0,SourceD/2,value);
+						value:=value/(Pi*Sqr(SourceD/2));
+					end;
+					Memo.Lines.Add(FloatToStr(yaw)+#9+FloatToStr(pitch)+#9+FloatToStr(delta)+#9+FloatToStr(A)+#9+FloatToStr(B)+#9+FloatToStr(value));
+				end
+				else
+				begin
+					if BeamData then
+					begin
+						Quad4D(-R,R,value);
+						{value:=value/(Pi*A*B);}
+					end
+					else
+					begin
+						Quad4D(-A,A,value);
+						value:=value/(Pi*A*B);
+					end;
+					Memo.Lines.Add(FloatToStr(yaw)+#9+FloatToStr(pitch)+#9+FloatToStr(delta)+#9+FloatToStr(A)+#9+FloatToStr(B)+#9+FloatToStr(value{/0.000900202592}));
+				end;
+				ProgressBar.Position:=i;
+				Application.ProcessMessages;
+			end;
+		end;
+		if (A=B) and (SinYaw=0) and (SinPitch=0) and (NAngles=1) then
+		begin
+			VFTitleLabel1.Visible:=True;
+			VFTitleLabel2.Visible:=True;
+			ViewFactorLabel1.Visible:=True;
+			ViewFactorLabel2.Visible:=True;
+			ViewFactorLabel1.Caption:=FloatToStr(value);
+			x:=1+(1+Sqr(R/L))/Sqr(A/L);
+			value:=0.5*(x-Sqrt(Sqr(x)-4*Sqr(R/A)));
+			ViewFactorLabel2.Caption:=FloatToStr(value);
+		end;
+		Screen.Cursor:=crDefault;
+	end;
+end;
+
+{.......................................................}
+
+procedure TMainForm.YawScanCheckBoxClick(Sender: TObject);
+begin
+	if YawScanCheckBox.Checked then
+	begin
+		PitchScanCheckBox.Checked:=False;
+		DeltaScanCheckBox.Checked:=False;
+		EndAngleLabel.Caption:='Last Yaw value:';
+		NumAnglesLabel.Caption:='Number of Yaw values:';
+	end
+	else
+	begin
+		EndAngleLabel.Caption:='Last value:';
+		NumAnglesLabel.Caption:='Number of values:';
+	end;
+	EndAngleLabel.Enabled:=YawScanCheckBox.Checked;
+	NumAnglesLabel.Enabled:=YawScanCheckBox.Checked;
+	EndAngleEdit.Enabled:=YawScanCheckBox.Checked;
+	NumAnglesEdit.Enabled:=YawScanCheckBox.Checked;
+end;
+
+procedure TMainForm.PitchScanCheckBoxClick(Sender: TObject);
+begin
+	if PitchScanCheckBox.Checked then
+	begin
+		YawScanCheckBox.Checked:=False;
+		DeltaScanCheckBox.Checked:=False;
+		EndAngleLabel.Caption:='Last Pitch value:';
+		NumAnglesLabel.Caption:='Number of Pitch values:';
+	end
+	else
+	begin
+		EndAngleLabel.Caption:='Last value:';
+		NumAnglesLabel.Caption:='Number of values:';
+	end;
+	EndAngleLabel.Enabled:=PitchScanCheckBox.Checked;
+	NumAnglesLabel.Enabled:=PitchScanCheckBox.Checked;
+	EndAngleEdit.Enabled:=PitchScanCheckBox.Checked;
+	NumAnglesEdit.Enabled:=PitchScanCheckBox.Checked;
+end;
+
+procedure TMainForm.DeltaScanCheckBoxClick(Sender: TObject);
+begin
+	if DeltaScanCheckBox.Checked then
+	begin
+		YawScanCheckBox.Checked:=False;
+		PitchScanCheckBox.Checked:=False;
+		EndAngleLabel.Caption:='Last Delta value:';
+		NumAnglesLabel.Caption:='Number of Delta values:';
+	end
+	else
+	begin
+		EndAngleLabel.Caption:='Last value:';
+		NumAnglesLabel.Caption:='Number of values:';
+	end;
+	EndAngleLabel.Enabled:=DeltaScanCheckBox.Checked;
+	NumAnglesLabel.Enabled:=DeltaScanCheckBox.Checked;
+	EndAngleEdit.Enabled:=DeltaScanCheckBox.Checked;
+	NumAnglesEdit.Enabled:=DeltaScanCheckBox.Checked;
+end;
+
+{.......................................................}
+
+procedure TMainForm.EditChange(Sender: TObject);
+var
+	valid:Boolean;
+	m1,m2:string;
+	d,yaw,pitch:Extended;
+begin
+	m1:='';
+	m2:='';
+	d:=ValidDlgReal(SourceDEdit,'(',0,0,'i',False,m1,m2,valid);
+	if valid then
+	begin
+		yaw:=ValidDlgReal(YawEdit,'(',-180,180,']',False,m1,m2,valid);
+		if valid then
+			ALabel.Caption:='A = '+FloatToStr(d/2/Cos(yaw*Pi/180))
+		else
+			ALabel.Caption:='A = ';
+		pitch:=ValidDlgReal(PitchEdit,'(',-180,180,']',False,m1,m2,valid);
+		if valid then
+			BLabel.Caption:='B = '+FloatToStr(d/2/Cos(pitch*Pi/180))
+		else
+			BLabel.Caption:='B = ';
+	end;
+end;
+
+procedure TMainForm.BrowseButtonClick(Sender: TObject);
+begin
+	with OpenDialog do
+	begin
+		FileName:='';
+		if Execute then
+			FileNameEdit.Text:=FileName;
+	end;
+end;
+
+{.......................................................}
+
+function TMainForm.ReadBeamFile:Boolean;
+var
+	fileName,S:string;
+	f:TextFile;
+	i,j,pos1:Integer;
+	valid:Boolean;
+	sum:Extended;
+begin
+	fileName:=FileNameEdit.Text;
+	if FileExists(fileName) then
+	begin
+		AssignFile(f,fileName);
+		Reset(f);
+		for i:=-N to N do
+		begin
+			Readln(f,S);
+			for j:=-N to N-1 do
+			begin
+				pos1:=Pos(#9,S);
+				Beam[i,j]:=StrToFloat(Copy(S,1,pos1-1));
+				S:=Copy(S,pos1+1,Length(S)-pos1);
+			end;
+			Beam[i,N]:=StrToFloat(S);
+		end;
+		CloseFile(f);
+		{sum:=0;
+		for i:=-10 to 10 do
+			for j:=-10 to 10 do
+				sum:=sum+Beam[i,j];
+		for i:=-10 to 10 do
+			for j:=-10 to 10 do
+				Beam[i,j]:=Beam[i,j]/sum;}
+		CalculateSignal;
+		valid:=True;
+	end
+	else
+	begin
+		ShowMessage('The file "'+fileName+'" doesn''t exist.');
+		valid:=False;
+	end;
+	ReadBeamFile:=valid;
+end;
+
+{.......................................................}
+
+procedure TMainForm.CalculateArea;
+var
+	i,j:Integer;
+	dx,dy:Extended;
+	edge:array[0..NGauLeg] of Extended;
+	s:string;
+begin
+	edge[0]:=-N;
+	edge[NGauLeg]:=N;
+	for i:=1 to NGauLeg-1 do
+		edge[i]:=0.5*N*(GauLegX[i]+GauLegX[i+1]);
+	for i:=1 to NGauLeg do
+		for j:=1 to NGauLeg do
+		begin
+			dx:=edge[i]-edge[i-1];
+			dy:=edge[j]-edge[j-1];
+			Area[i,j]:=dx*dy;
+		end;
+	{for i:=1 to NGauLeg do
+	begin
+		s:='';
+		for j:=1 to NGauLeg do
+			s:=s+#9+FloatToStr(Area[i,j]);
+		Memo.Lines.Add(s);
+	end;}
+end;
+
+{.......................................................}
+
+procedure TMainForm.CalculateSignal;
+var
+	i,j:Integer;
+	x,y,sum:Extended;
+	s:string;
+begin
+	CalculateArea;
+	sum:=0;
+	for i:=1 to NGauLeg do
+		for j:=1 to NGauLeg do
+		begin
+			x:=N*GauLegX[i];
+			y:=N*GauLegX[j];
+			Polar:=False;
+			Signal[i,j]:=InterpolateBeamData(x,y);
+			sum:=sum+Signal[i,j]*Area[i,j];
+			Polar:=PolarCheckBox.Checked;
+		end;
+	for i:=1 to NGauLeg do
+		for j:=1 to NGauLeg do
+			Signal[i,j]:=Signal[i,j]/sum;
+	{for i:=1 to NGauLeg do
+	begin
+		s:='';
+		for j:=1 to NGauLeg do
+			s:=s+#9+FloatToStr(Signal[i,j]);
+		Memo.Lines.Add(s);
+	end;}
+end;
+
+{.......................................................}
+
+procedure TMainForm.CreateUniformBeam;
+var
+	i,j:Integer;
+begin
+	for i:=-N to N do
+		for j:=-N to N do
+		begin
+			if (Sqr(i)+Sqr(j))<=Sqr(SourceD/2) then
+				Beam[i,j]:=1
+			else
+				Beam[i,j]:=0;
+		end;
+	CalculateSignal;
+end;
+
+{.......................................................}
+
+end.
