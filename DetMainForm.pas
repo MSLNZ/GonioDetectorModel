@@ -141,6 +141,7 @@ type
     Label16: TLabel;
     DiffusePitchEdit: TEdit;
     Memo1: TMemo;
+    MirrorReflCheckBox: TCheckBox;
 		procedure FormCreate(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure DataPanelResize(Sender: TObject);
@@ -224,7 +225,7 @@ var
 	IniFile,Pol:string;
 	Lambda,Thickness,DiffuseDetAngle,BeamRadius,DetectorRadius,POffsetSize,DiffusePitch:Extended;
 	XOffsetVF,YOffsetVF:Integer;
-	VaryingLambda:Boolean;
+	VaryingLambda,IncludeMirrorRefl:Boolean;
 	LengthL:Extended;
 	XVariable:TXVariable;
 	Mode:TCalculationMode;
@@ -322,6 +323,7 @@ begin
 		OffsetP:=ReadBool('Beam Variables','OffsetP',False);
 		POffsetSize:=ReadFloat('Beam Variables','POffsetSize',1);
 		DiffusePitch:=ReadFloat('Beam Variables','Pitch',0);
+    IncludeMirrorRefl:=ReadBool('Beam variables','Include mirror reflection',True);
 		Polar:=ReadBool('View Factor Parameters','Polar',True);
 		LengthL:=ReadFloat('View Factor Parameters','Length',500);
 		XOffsetVF:=ReadInteger('View Factor Parameters','X Offset VF',0);
@@ -372,6 +374,7 @@ begin
 		WriteBool('Beam Variables','OffsetP',OffsetP);
 		WriteFloat('Beam Variables','POffsetSize',POffsetSize);
 		WriteFloat('Beam Variables','Pitch',DiffusePitch);
+    WriteBool('Beam variables','Include mirror reflection',IncludeMirrorRefl);
 		WriteBool('View Factor Parameters','Polar',Polar);
 		WriteFloat('View Factor Parameters','Length',LengthL);
 		WriteFloat('View Factor Parameters','X Offset VF',XOffsetVF);
@@ -601,6 +604,7 @@ begin
 	if Valid and Started then
 	begin
 		CreateSiRefractiveIndexTable;
+    CreateAlRefractiveIndexTable;
 		with DataSpreadsheet.StringGrid do
 		begin
 			lastRow:=0;
@@ -737,6 +741,7 @@ begin
 	thisXOffset:=CheckValidInput(DiffuseXOffsetEdit,'X offset','mm',-20,20,Valid);
 	thisYOffset:=CheckValidInput(DiffuseYOffsetEdit,'Y offset','mm',-20,20,Valid);
 	DiffusePitch:=CheckValidInput(DiffusePitchEdit,'Pitch','°',-180,180,Valid);
+  IncludeMirrorRefl:=MirrorReflCheckBox.Checked;
 	if OffsetP then
 		POffsetSize:=CheckValidInput(DiffusePOffsetEdit,'P offset','mm',-10,10,Valid)
 	else
@@ -744,6 +749,7 @@ begin
 	if valid and Started then
 	begin
 		CreateSiRefractiveIndexTable;
+    CreateAlRefractiveIndexTable;
 		with DataSpreadsheet.StringGrid do
 		begin
 			lastRow:=0;
@@ -1001,6 +1007,7 @@ begin
 	DiffusePOffsetEdit.Enabled:=(ToWhat and OffsetP);
 	DiffusePOffsetCheckBox.Enabled:=ToWhat;
 	DiffusePitchEdit.Enabled:=ToWhat;
+  MirrorReflCheckBox.Enabled:=ToWhat;
 end;
 
 procedure TMainForm.HorizontalSplitterCanResize(Sender: TObject;
@@ -1231,6 +1238,7 @@ begin
 	PauseButton.Left:=CalculateButton.Left;
 	DiffuseThicknessEdit.Text:=FloatToStr(Thickness);
 	DiffusePitchEdit.Text:=FloatToStr(DiffusePitch);
+  MirrorReflCheckBox.Checked:=IncludeMirrorRefl;
 	DiffuseBeamRadiusEdit.Text:=FloatToStr(BeamRadius);
 	DiffuseDetectorRadiusEdit.Text:=FloatToStr(DetectorRadius);
 	DiffuseXOffsetEdit.Text:='0';
@@ -1532,6 +1540,7 @@ begin
 			StoreString(LengthEdit.Text);
 			Write(Polar,SizeOf(Polar));
 			StoreString(DiffusePitchEdit.Text);
+			Write(IncludeMirrorRefl,SizeOf(IncludeMirrorRefl));
 			StoreString(DiffuseBeamRadiusEdit.Text);
 			StoreString(DiffuseDetectorRadiusEdit.Text);
 			StoreString(DiffuseXOffsetEdit.Text);
@@ -1680,14 +1689,16 @@ begin
 			LoadStringEdit(DetectorRadiusVFEdit);
 			LoadStringEdit(LengthEdit);
 			Read(Polar,SizeOf(Polar));
+      if version>1.04 then
+				LoadStringEdit(DiffusePitchEdit);
+      if version>1.05 then
+        Read(IncludeMirrorRefl,SizeOf(IncludeMirrorRefl));
 			LoadStringEdit(DiffuseThicknessEdit);
 			LoadStringEdit(DiffuseBeamRadiusEdit);
 			LoadStringEdit(DiffuseDetectorRadiusEdit);
 			LoadStringEdit(DiffuseXOffsetEdit);
 			LoadStringEdit(DiffuseYOffsetEdit);
 			LoadStringEdit(DiffusePOffsetEdit);
-			if version>1.04 then
-				LoadStringEdit(DiffusePitchEdit);
 			Read(BeamData,SizeOf(BeamData));
 			LoadStringEdit(FileNameSEdit);
 			LoadStringEdit(FileNamePEdit);

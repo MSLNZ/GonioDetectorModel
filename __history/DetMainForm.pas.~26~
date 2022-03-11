@@ -138,6 +138,10 @@ type
     NGauLegLabel: TLabel;
     PlotDataMenu: TMenuItem;
     N3: TMenuItem;
+    Label16: TLabel;
+    DiffusePitchEdit: TEdit;
+    Memo1: TMemo;
+    MirrorReflCheckBox: TCheckBox;
 		procedure FormCreate(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure DataPanelResize(Sender: TObject);
@@ -219,9 +223,9 @@ type
 var
 	MainForm: TMainForm;
 	IniFile,Pol:string;
-	Lambda,Thickness,DiffuseDetAngle,BeamRadius,DetectorRadius,POffsetSize:Extended;
+	Lambda,Thickness,DiffuseDetAngle,BeamRadius,DetectorRadius,POffsetSize,DiffusePitch:Extended;
 	XOffsetVF,YOffsetVF:Integer;
-	VaryingLambda:Boolean;
+	VaryingLambda,IncludeMirrorRefl:Boolean;
 	LengthL:Extended;
 	XVariable:TXVariable;
 	Mode:TCalculationMode;
@@ -318,6 +322,8 @@ begin
 		BeamDataPFileName:=ReadString('Beam Variables','BeamDataPFileName','');
 		OffsetP:=ReadBool('Beam Variables','OffsetP',False);
 		POffsetSize:=ReadFloat('Beam Variables','POffsetSize',1);
+		DiffusePitch:=ReadFloat('Beam Variables','Pitch',0);
+    IncludeMirrorRefl:=ReadBool('Beam variables','Include mirror reflection',True);
 		Polar:=ReadBool('View Factor Parameters','Polar',True);
 		LengthL:=ReadFloat('View Factor Parameters','Length',500);
 		XOffsetVF:=ReadInteger('View Factor Parameters','X Offset VF',0);
@@ -367,6 +373,8 @@ begin
 		WriteString('Beam Variables','BeamDataPFileName',BeamDataPFileName);
 		WriteBool('Beam Variables','OffsetP',OffsetP);
 		WriteFloat('Beam Variables','POffsetSize',POffsetSize);
+		WriteFloat('Beam Variables','Pitch',DiffusePitch);
+    WriteBool('Beam variables','Include mirror reflection',IncludeMirrorRefl);
 		WriteBool('View Factor Parameters','Polar',Polar);
 		WriteFloat('View Factor Parameters','Length',LengthL);
 		WriteFloat('View Factor Parameters','X Offset VF',XOffsetVF);
@@ -649,7 +657,7 @@ begin
 				begin
 					if BeamData then
 					begin
-						CalculateRDiffuseBeamData(Lambda,Thickness,DiffuseDetAngle,rDiffuseS,rDiffuseP);
+						CalculateRDiffuseBeamData(Lambda,Thickness,DiffuseDetAngle*Pi/180,rDiffuseS,rDiffuseP);
 						RDiffLabel.Caption:='R diffuse s:';
 						RDiffuseLabel.Caption:=FloatToStr(rDiffuseS);
 						RDiffuseLabel.Visible:=True;
@@ -659,7 +667,7 @@ begin
 					end
 					else
 					begin
-						rDiffuse:=CalculateRDiffuse(Lambda,Thickness,DiffuseDetAngle*Pi/180);
+						rDiffuse:=CalculateRDiffuse(Lambda,Thickness,DiffuseDetAngle*Pi/180,rDiffuseS,rDiffuseP);
 						RDiffLabel.Caption:='R diffuse unpolarised:';
 						RDiffuseLabel.Caption:=FloatToStr(rDiffuse);
 						RDiffuseLabel.Visible:=True;
@@ -731,6 +739,8 @@ begin
 	DetectorRadius:=CheckValidInput(DiffuseDetectorRadiusEdit,'Detector radius','mm',0,50,Valid);
 	thisXOffset:=CheckValidInput(DiffuseXOffsetEdit,'X offset','mm',-20,20,Valid);
 	thisYOffset:=CheckValidInput(DiffuseYOffsetEdit,'Y offset','mm',-20,20,Valid);
+	DiffusePitch:=CheckValidInput(DiffusePitchEdit,'Pitch','°',-180,180,Valid);
+  IncludeMirrorRefl:=MirrorReflCheckBox.Checked;
 	if OffsetP then
 		POffsetSize:=CheckValidInput(DiffusePOffsetEdit,'P offset','mm',-10,10,Valid)
 	else
@@ -780,7 +790,7 @@ begin
 								if BeamData then
 									CalculateRDiffuseBeamData(thisLambda,Thickness,thisDetAngle,rDiffuseS,rDiffuseP)
 								else
-									rDiffuse:=CalculateRDiffuse(thisLambda,Thickness,thisDetAngle);
+									rDiffuse:=CalculateRDiffuse(thisLambda,Thickness,thisDetAngle,rDiffuseS,rDiffuseP);
 							end;
 							if Valid and Started then
 							begin
@@ -801,8 +811,8 @@ begin
 									ratioP:=thisRCollimatedP/rDiffuse;
 									Cells[3,i]:=FloatToStr(thisRCollimatedS);
 									Cells[4,i]:=FloatToStr(thisRCollimatedP);
-									Cells[5,i]:=FloatToStr(rDiffuse);
-									Cells[6,i]:=FloatToStr(rDiffuse);
+									Cells[5,i]:=FloatToStr(rDiffuseS);
+									Cells[6,i]:=FloatToStr(rDiffuseP);
 								end;
 								with GraphWindow do
 								begin
@@ -994,6 +1004,8 @@ begin
 	DiffuseYOffsetEdit.Enabled:=ToWhat;
 	DiffusePOffsetEdit.Enabled:=(ToWhat and OffsetP);
 	DiffusePOffsetCheckBox.Enabled:=ToWhat;
+	DiffusePitchEdit.Enabled:=ToWhat;
+  MirrorReflCheckBox.Enabled:=ToWhat;
 end;
 
 procedure TMainForm.HorizontalSplitterCanResize(Sender: TObject;
@@ -1223,6 +1235,8 @@ begin
 	CalculateButton.Left:=BeamImagingGroupBox.Left;
 	PauseButton.Left:=CalculateButton.Left;
 	DiffuseThicknessEdit.Text:=FloatToStr(Thickness);
+	DiffusePitchEdit.Text:=FloatToStr(DiffusePitch);
+  MirrorReflCheckBox.Checked:=IncludeMirrorRefl;
 	DiffuseBeamRadiusEdit.Text:=FloatToStr(BeamRadius);
 	DiffuseDetectorRadiusEdit.Text:=FloatToStr(DetectorRadius);
 	DiffuseXOffsetEdit.Text:='0';
@@ -1523,12 +1537,14 @@ begin
 			StoreString(DetectorRadiusVFEdit.Text);
 			StoreString(LengthEdit.Text);
 			Write(Polar,SizeOf(Polar));
-			StoreString(DiffuseThicknessEdit.Text);
+			StoreString(DiffusePitchEdit.Text);
+			Write(IncludeMirrorRefl,SizeOf(IncludeMirrorRefl));
 			StoreString(DiffuseBeamRadiusEdit.Text);
 			StoreString(DiffuseDetectorRadiusEdit.Text);
 			StoreString(DiffuseXOffsetEdit.Text);
 			StoreString(DiffuseYOffsetEdit.Text);
 			StoreString(DiffusePOffsetEdit.Text);
+			StoreString(DiffuseThicknessEdit.Text);
 			Write(BeamData,SizeOf(BeamData));
 			StoreString(FileNameSEdit.Text);
 			StoreString(FileNamePEdit.Text);
@@ -1578,14 +1594,14 @@ var
 			theStream.ReadBuffer(S1^,theLength);
 			S1[theLength]:=#0;
 			S:=StrPas(S1);}
-        theStream.readBuffer(len,4);
-       if len>0 then
-       begin
-          setLength(iString,len);
-          theStream.ReadBuffer(iString[1],len);
-          S:=string(iString);
-       end
-       else
+      theStream.readBuffer(len,4);
+      if len>0 then
+      begin
+        setLength(iString,len);
+        theStream.ReadBuffer(iString[1],len);
+        S:=string(iString);
+      end
+      else
         S:='';
 		end;
 
@@ -1671,6 +1687,10 @@ begin
 			LoadStringEdit(DetectorRadiusVFEdit);
 			LoadStringEdit(LengthEdit);
 			Read(Polar,SizeOf(Polar));
+      if version>1.04 then
+				LoadStringEdit(DiffusePitchEdit);
+      if version>1.05 then
+        Read(IncludeMirrorRefl,SizeOf(IncludeMirrorRefl));
 			LoadStringEdit(DiffuseThicknessEdit);
 			LoadStringEdit(DiffuseBeamRadiusEdit);
 			LoadStringEdit(DiffuseDetectorRadiusEdit);
@@ -1719,7 +1739,8 @@ begin
 			YOffset:YOffsetRadioButton.Checked:=True;
 		end;
 		GraphWindow.ResetGraph;
-    if version>1.02 then // need to read first two lines from graph data
+    if version<1.03 then
+    // need to read first two lines from graph data
     begin
       theStream.Read(theSize,SizeOf(theSize));
       theStream.Read(theSize,SizeOf(theSize));
