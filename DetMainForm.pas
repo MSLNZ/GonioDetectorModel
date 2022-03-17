@@ -140,7 +140,6 @@ type
     N3: TMenuItem;
     Label16: TLabel;
     DiffusePitchEdit: TEdit;
-    Memo1: TMemo;
     MirrorReflCheckBox: TCheckBox;
 		procedure FormCreate(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
@@ -742,6 +741,8 @@ begin
 	thisYOffset:=CheckValidInput(DiffuseYOffsetEdit,'Y offset','mm',-20,20,Valid);
 	DiffusePitch:=CheckValidInput(DiffusePitchEdit,'Pitch','°',-180,180,Valid);
   IncludeMirrorRefl:=MirrorReflCheckBox.Checked;
+  {AssignFile(fl,'Output.txt');
+	Rewrite(fl);}
 	if OffsetP then
 		POffsetSize:=CheckValidInput(DiffusePOffsetEdit,'P offset','mm',-10,10,Valid)
 	else
@@ -796,8 +797,8 @@ begin
 							end;
 							if Valid and Started then
 							begin
-								thisRCollimatedS:=CalculateRCollimated(thisLambda,Thickness,0,thisXOffset,thisYOffset,'s',BeamData);
-								thisRCollimatedP:=CalculateRCollimated(thisLambda,Thickness,0,thisXOffset+POffsetSize,thisYOffset+POffsetSize,'p',BeamData);
+								thisRCollimatedS:=CalculateRCollimated(thisLambda,Thickness,0{thisDetAngle},thisXOffset,thisYOffset,'s',BeamData);
+								thisRCollimatedP:=CalculateRCollimated(thisLambda,Thickness,0{thisDetAngle},thisXOffset+POffsetSize,thisYOffset+POffsetSize,'p',BeamData);
 								if BeamData then
 								begin
 									ratioS:=thisRCollimatedS/rDiffuseS;
@@ -839,6 +840,7 @@ begin
 			end;
 		end;
 	end;
+  {CloseFile(fl);}
 end;
 
 procedure TMainForm.CalculateAllViewFactors(var Valid:Boolean);

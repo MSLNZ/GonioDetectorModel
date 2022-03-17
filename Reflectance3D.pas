@@ -23,7 +23,7 @@ function CalculatePolarisationRatio(PolVector,SurfaceNormal,BeamVector:TVector):
 function PolarisationVector(C:T2Array;SurfaceNormal,BeamVector:TVector):TVector;
 function NormaliseVector(V:TVector):TVector;
 function CalculateSiAngle(DetectorAngle,C1,C2:Extended;var MirrorNormal,DiodeNormal,BeamVector1,BeamVector2,BeamVector3:TVector):TVector;
-function CalculateSiAngleDiffuse(DetectorAngle,Cxi,Cyi,Cxm,Cym:Extended;var MirrorNormal,DiodeNormal,BeamVector1,BeamVector2,BeamVector3:TVector;var ThetaD,L:Extended):TVector;
+function CalculateSiAngleDiffuse(DetectorAngle,Cxi,Cyi,Cxm,Cym:Extended;var MirrorNormal,DiodeNormal,BeamVector1,BeamVector2,BeamVector3,MirrorPosition:TVector;var ThetaD,L:Extended):TVector;
 function CalculateAbsorbance(Lambda,Thickness,Theta,MirrorTheta:Extended;SiNormal,MirrorNormal,BeamVector1,BeamVector2,BeamVector3:TVector;Pol:string):Extended;
 function CalculateRDiffuse(Lambda,Thickness,DetAngle:Extended;var rDiffuseS,rDiffuseP:Extended):Extended;
 function CalculateRDiffuseBeamData(Lambda,Thickness,DetAngle:Extended;var RDiffuseS,RDiffuseP:Extended):Boolean;
@@ -48,12 +48,12 @@ var
 	ErrorString:string;
 	SBeam,PBeam:TBeamArray;
 	PrintC:Boolean;
-  f:Textfile;
+  {f:Textfile;}
 
 implementation
 
 uses
-	DetMainForm, ViewFactors;
+	DetMainForm, ViewFactors, DetGlobal;
 
 {.......................................................}
 
@@ -492,13 +492,10 @@ begin
 	o[1]:=C1;
 	o[2]:=0;
 	o[3]:=C2;
-	{s[1]:=-Rc*Cos(MirrorAngle)*Sin(MirrorAngle);
-	s[2]:=R1-Rc*Cos(MirrorAngle)*Cos(MirrorAngle);
-	s[3]:=Rc*Sin(MirrorAngle);}
 	s[1]:=-Rc*Sin(MirrorAngle);
 	s[2]:=R1-Rc*Cos(MirrorAngle);
 	s[3]:=Rc*Sin(MirrorAngle);
-	a[1]:=C1;
+	a[1]:=C1{+90*Sin(DetectorAngle)};
 	a[3]:=C2;
 	a[2]:=Sqrt(Sqr(Rc)-Sqr(s[1]-a[1])-Sqr(s[3]-a[3]))+s[2];
 	theta1:=AngleBetweenThreePoints(o,a,s);
@@ -509,9 +506,6 @@ begin
 		eVector[i]:=2*DotProduct(oVector,sVector)*sVector[i]-oVector[i];
 		e[i]:=a[i]+R2*eVector[i];
 	end;
-	{nVector[1]:=Cos(DiodeAngle)*Sin(DiodeAngle);
-	nVector[2]:=Cos(DiodeAngle)*Cos(DiodeAngle);
-	nVector[3]:=-Sin(DiodeAngle);}
 	nVector[1]:=Sin(DiodeAngle);
 	nVector[2]:=Cos(DiodeAngle);
 	nVector[3]:=-Sin(DiodeAngle);
@@ -550,7 +544,7 @@ end;
 {.......................................................}
 
 function CalculateSiAngleDiffuse(DetectorAngle,Cxi,Cyi,Cxm,Cym:Extended;var MirrorNormal,
-							DiodeNormal,BeamVector1,BeamVector2,BeamVector3:TVector;var ThetaD,L:Extended):TVector;
+							DiodeNormal,BeamVector1,BeamVector2,BeamVector3,MirrorPosition:TVector;var ThetaD,L:Extended):TVector;
 // Cxi,Cyi are the x and y positions of the beam at the sample position, Cxm,Cym are the x and y positions
 // of the beam when it goes through the aperture. We calculate the position of where these hit the mirror.
 var
@@ -608,15 +602,16 @@ begin
 			e[i]:=a[i]+t*eVector[i];
 		n:=VectorAddition(e,nVector);
 	end;
-	b[1]:=0;
-	b[2]:=-R1;
-	b[3]:=0;
+	b[1]:=Cxi;
+	b[2]:=R1;
+	b[3]:=Cyi;
 	ThetaD:=AngleBetweenThreePoints(b,o,a);
 	oa:=VectorSubtraction(o,a);
 	L:=Sqrt(DotProduct(oa,oa));
 	theta2:=AngleBetweenThreePoints(a,e,n);
 	MirrorNormal:=sVector;
 	DiodeNormal:=nVector;
+  MirrorPosition:=a;
 	BeamVector1:=NormaliseVector(oa);
 	BeamVector2:=NormaliseVector(VectorSubtraction(e,a));
 	BeamVector3:=NormaliseVector(VectorSubtraction(a,e));
@@ -654,33 +649,20 @@ begin
   mirrorReflectanceP:=CalculateCompoundReflectanceMirror(Lambda,205,MirrorTheta,'p');
   mirrorReflectanceS:=CalculateCompoundReflectanceMirror(Lambda,205,MirrorTheta,'s');
   mirrorRefl:=Abs(cMirror[1])*mirrorReflectanceS+Abs(cMirror[2])*mirrorReflectanceP;
-	{qzWindowTransmittanceP:=CalculateSiOTransmittance(Theta,Lambda,'p');
-	qzWindowTransmittanceS:=CalculateSiOTransmittance(Theta,Lambda,'s');}
 	siReflectanceP:=CalculateCompoundReflectanceDiode(Lambda,Thickness,Theta,'p');
 	siReflectanceS:=CalculateCompoundReflectanceDiode(Lambda,Thickness,Theta,'s');
-	absorbanceP:=(1-siReflectanceP){*qzWindowTransmittanceP};
-	absorbanceS:=(1-siReflectanceS){*qzWindowTransmittanceS};
+	absorbanceP:=(1-siReflectanceP);
+	absorbanceS:=(1-siReflectanceS);
   if IncludeMirrorRefl then
     absorbance:=mirrorRefl*(Abs(cDiode[1])*absorbanceS+Abs(cDiode[2])*absorbanceP)
   else
   	absorbance:=Abs(cDiode[1])*absorbanceS+Abs(cDiode[2])*absorbanceP;
 	CalculateAbsorbance:=absorbance;
   {if PrintC then
-    MainForm.Memo1.Lines.Add(Pol+' '+FloatToStr(Theta*180/Pi)+' '+FloatToStr(Abs(cDiode[1]))+' '+FloatToStr(Abs(cDiode[2]))+' '+FloatToStr(absorbance))
-  else
   begin
-    Write(f,Pol+' '+FloatToStr(Theta*180/Pi)+' '+FloatToStr(Abs(cDiode[1]))+' '+FloatToStr(Abs(cDiode[2]))+' '+FloatToStr(absorbance));
-    Writeln(f);
+    Write(fl,Pol,#9,Theta*180/Pi,#9,absorbance,#9,Abs(cDiode[1]),#9,Abs(cDiode[2]));
+    Writeln(fl);
   end;}
-	{if PrintC then
-	if Pol='s' then
-		MainForm.Memo1.Lines.Add(FloatToStr(Theta*180/Pi))
-	else
-		MainForm.Memo2.Lines.Add(FloatToStr(Theta*180/Pi));}
-		{if Pol='s' then
-			MainForm.Memo1.Lines.Add(FloatToStr(Abs(cDiode[1]))+' '+FloatToStr(Abs(cDiode[2])))
-		else
-			MainForm.Memo2.Lines.Add(FloatToStr(Abs(cDiode[1]))+' '+FloatToStr(Abs(cDiode[2])));}
 end;
 
 {.......................................................}
@@ -1054,26 +1036,22 @@ end;
 
 function CalculateRDiffuse(Lambda,Thickness,DetAngle:Extended;var rDiffuseS,rDiffuseP:Extended):Extended;
 var
-	i,j,ii,jj,ind:Integer;
+	i,j,ii,jj:Integer;
 	cxi,cyi,cxm,cym,thetaD,L,cosThetaD,lengthRatio,siIncidentAngle:Extended;
 	t,xs,ys,L2,td,pitchRad:Extended;
-	sampleVector,sampleNormal,detVector,lengthVector:TVector;
+	sampleVector,sampleNormal,detVector,lengthVector,mirrorPos:TVector;
 	mirrorNormal,diodeNormal,beamVector1,beamVector2,beamVector3:TVector;
 	r:TMatrix;
-	sAbsorbance,pAbsorbance,perfectBeam,avgDiodeAngle,sRefl,pRefl,mirrorAngle:Extended;
+	sAbsorbance,pAbsorbance,perfectBeam,mirrorAngle:Extended;
   siAngles:TVector;
 begin
 	sAbsorbance:=0;
 	pAbsorbance:=0;
 	perfectBeam:=0;
-  ind:=0;
-  avgDiodeAngle:=0;
   PrintC:=False;
-  {AssignFile(f,'Output.txt');
-  Rewrite(f);}
 	// Iterate through all points in sample beam and all points in detector
-	for i:=-15 to 15 do
-		for j:=-15 to 15 do
+	for i:=-20 to 20 do
+		for j:=-20 to 20 do
 		begin
 			cxi:=i;
 			cyi:=j;
@@ -1083,18 +1061,18 @@ begin
 				if DiffusePitch<>0 then
 				begin
 					sampleVector[1]:=cxi;
-					sampleVector[2]:=cyi;
-					sampleVector[3]:=0;
-					sampleNormal[1]:=0;
-					sampleNormal[2]:=0;
-					sampleNormal[3]:=1;
+					sampleVector[2]:=0;
+					sampleVector[3]:=cyi;
+					sampleNormal[1]:=cxi;
+					sampleNormal[2]:=1;
+					sampleNormal[3]:=cyi;
           pitchRad:=DiffusePitch*Pi/180;
 					CreateRotationMatrix(pitchRad,'x',r);
 					sampleVector:=MatrixMultiplication(r,sampleVector);
 					sampleNormal:=MatrixMultiplication(r,sampleNormal);
 				end;
-				for ii:=-15 to 15 do
-					for jj:=-15 to 15 do
+				for ii:=-20 to 20 do
+					for jj:=-20 to 20 do
 					begin
 						cxm:=ii;
 						cym:=jj;
@@ -1102,63 +1080,66 @@ begin
 						begin
 							if DiffusePitch=0 then
 							begin
-                siAngles:=CalculateSiAngleDiffuse(DetAngle,cxi,cyi,cxm,cym,mirrorNormal,diodeNormal,beamVector1,beamVector2,beamVector3,thetaD,L);
+                siAngles:=CalculateSiAngleDiffuse(DetAngle,cxi,cyi,cxm,cym,mirrorNormal,diodeNormal,beamVector1,beamVector2,beamVector3,mirrorPos,thetaD,L);
 								siIncidentAngle:=siAngles[1];
                 mirrorAngle:=siAngles[2];
 								cosThetaD:=Abs(Cos(thetaD));
+                sampleVector[1]:=cxi;
+                sampleVector[2]:=0;
+                sampleVector[3]:=cyi;
+                sampleNormal[1]:=cxi;
+                sampleNormal[2]:=1;
+                sampleNormal[3]:=cyi;
+                td:=AngleBetweenThreePoints(sampleNormal,sampleVector,mirrorPos){AngleBetweenVectors(sampleNormal,mirrorPos)};
+								cosThetaD:=Abs(Cos(td));
 								lengthRatio:=Sqr(R1)/Sqr(L);
 								sAbsorbance:=sAbsorbance+CalculateAbsorbance(Lambda,Thickness,siIncidentAngle,mirrorAngle,diodeNormal,mirrorNormal,beamVector1,beamVector2,beamVector3,'s')*cosThetaD*lengthRatio;
 								pAbsorbance:=pAbsorbance+CalculateAbsorbance(Lambda,Thickness,siIncidentAngle,mirrorAngle,diodeNormal,mirrorNormal,beamVector1,beamVector2,beamVector3,'p')*cosThetaD*lengthRatio;
 								perfectBeam:=perfectBeam+cosThetaD*lengthRatio;
-                avgDiodeAngle:=AvgDiodeAngle+siIncidentAngle;
-                Inc(ind);
+                {Write(fl,pol,#9,FloatToStr(td*180/Pi),#9,FloatToStr(lengthRatio),#9,R1,#9,L);
+                Writeln(fl);}
 							end
 							else
 							begin
 								detVector[1]:=cxm;
-								detVector[2]:=cym;
-								detVector[3]:=R1;
+								detVector[2]:=R1;
+								detVector[3]:=cym;
 
 								// Calculate the x and y coordinates for the beam when the z coordinate is zero (xs,ys - positions on sample) and calculate theta d
-								t:=-sampleVector[3]/(R1-sampleVector[3]);
+								t:=-sampleVector[2]/(R1-sampleVector[2]);
 								xs:=t*(cxm-sampleVector[1])+sampleVector[1];
-								ys:=t*(cym-sampleVector[2])+sampleVector[2];
+								ys:=t*(cym-sampleVector[2])+sampleVector[3];
 								CreateRotationMatrix(DetAngle,'z',r);
 								detVector:=MatrixMultiplication(r,detVector);
-								td:=AngleBetweenVectors(sampleNormal,detVector){AngleBetweenThreePoints(sampleNormal,sampleVector,detVector)};
 
 								// Calculate the si incident angle
-                siAngles:=CalculateSiAngleDiffuse(DetAngle,xs,ys,cxm,cym,mirrorNormal,diodeNormal,beamVector1,beamVector2,beamVector3,thetaD,L);
+                siAngles:=CalculateSiAngleDiffuse(DetAngle,xs,ys,cxm,cym,mirrorNormal,diodeNormal,beamVector1,beamVector2,beamVector3,mirrorPos,thetaD,L);
 								siIncidentAngle:=siAngles[1];
                 mirrorAngle:=siAngles[2];
 
 								// Calculate cos theta d and the length ratio
+                td:=AngleBetweenThreePoints(sampleNormal,sampleVector,mirrorPos){AngleBetweenVectors(sampleNormal,mirrorPos)};
 								cosThetaD:=Abs(Cos(td));
-								lengthVector:=(VectorSubtraction(sampleVector,detVector));
+								lengthVector:=(VectorSubtraction(sampleVector,mirrorPos));
 								L2:=Sqrt(DotProduct(lengthVector,lengthVector));
-								lengthRatio:=Sqr(L2)/Sqr(L);
+								lengthRatio:=Sqr(R1)/Sqr(L2);
 
 								// Calculate absorbances and perfect beam value
 								sAbsorbance:=sAbsorbance+CalculateAbsorbance(Lambda,Thickness,siIncidentAngle,mirrorAngle,diodeNormal,mirrorNormal,beamVector1,beamVector2,beamVector3,'s')*cosThetaD*lengthRatio;
 								pAbsorbance:=pAbsorbance+CalculateAbsorbance(Lambda,Thickness,siIncidentAngle,mirrorAngle,diodeNormal,mirrorNormal,beamVector1,beamVector2,beamVector3,'p')*cosThetaD*lengthRatio;
 								perfectBeam:=perfectBeam+cosThetaD*lengthRatio;
 
-                avgDiodeAngle:=AvgDiodeAngle+siIncidentAngle;
-                Inc(ind);
+                {Write(fl,pol,#9,FloatToStr(td*180/Pi),#9,FloatToStr(lengthRatio),#9,L2,#9,L);
+                Writeln(fl);}
               end;
 						end;
 						Application.ProcessMessages;
 					end;
 			end;
 		end;
-  avgDiodeAngle:=AvgDiodeAngle*180/Pi/ind;
-  sRefl:=CalculateCompoundReflectanceDiode(Lambda,Thickness,avgDiodeAngle*Pi/180,'s');
-  pRefl:=CalculateCompoundReflectanceDiode(Lambda,Thickness,avgDiodeAngle*Pi/180,'p');
-  ShowMessage('Diffuse: '+FloatToStr(avgDiodeAngle)+' s Reflectance: '+FloatToStr(sRefl)+' p Reflectance: '+FloatToStr(pRefl)+' p Reflectance: '+FloatToStr(pRefl));
   rDiffuseS:=sAbsorbance/perfectBeam;
   rDiffuseP:=pAbsorbance/perfectBeam;
 	CalculateRDiffuse:=(sAbsorbance+pAbsorbance)/(2*perfectBeam);
-  {CloseFile(f);}
 end;
 
 {.......................................................}
@@ -1167,7 +1148,7 @@ function CalculateRDiffuseBeamData(Lambda,Thickness,DetAngle:Extended;var RDiffu
 var
 	i,j,ii,jj:Integer;
 	cxi,cyi,cxm,cym,thetaD,L,cosThetaD,lengthRatio,siIncidentAngle:Extended;
-	mirrorNormal,diodeNormal,beamVector1,beamVector2,beamVector3:TVector;
+	mirrorNormal,diodeNormal,beamVector1,beamVector2,beamVector3,mirrorPos:TVector;
 	sAbsorbanceS,sAbsorbanceP,pAbsorbanceS,pAbsorbanceP,perfectBeamS,perfectBeamP:Extended;
   avgDiodeAngle,sRefl,pRefl,mirrorAngle:Extended;
   ind:Integer;
@@ -1181,19 +1162,19 @@ begin
 	perfectBeamP:=0;
   ind:=0;
   avgDiodeAngle:=0;
-	for i:=-15 to 15 do
-		for j:=-15 to 15 do
+	for i:=-20 to 20 do
+		for j:=-20 to 20 do
 		begin
 			cxi:=i;
 			cyi:=j;
-			for ii:=-15 to 15 do
-				for jj:=-15 to 15 do
+			for ii:=-20 to 20 do
+				for jj:=-20 to 20 do
 				begin
 					cxm:=ii;
 					cym:=jj;
 					if Sqr(cxm)+Sqr(cym)<=Sqr(DetectorRadius) then
 					begin
-            siAngles:=CalculateSiAngleDiffuse(DetAngle,cxi,cyi,cxm,cym,mirrorNormal,diodeNormal,beamVector1,beamVector2,beamVector3,thetaD,L);
+            siAngles:=CalculateSiAngleDiffuse(DetAngle,cxi,cyi,cxm,cym,mirrorNormal,diodeNormal,beamVector1,beamVector2,beamVector3,mirrorPos,thetaD,L);
 						siIncidentAngle:=siAngles[1];
             mirrorAngle:=siAngles[2];
 						cosThetaD:=Cos(thetaD);
@@ -1215,7 +1196,6 @@ begin
   avgDiodeAngle:=avgDiodeAngle*180/Pi/ind;
   sRefl:=CalculateCompoundReflectanceDiode(Lambda,Thickness,avgDiodeAngle*Pi/180,'s');
   pRefl:=CalculateCompoundReflectanceDiode(Lambda,Thickness,avgDiodeAngle*Pi/180,'p');
-  {ShowMessage('Diffuse: '+FloatToStr(avgDiodeAngle)+' s Reflectance: '+FloatToStr(sRefl)+' p Reflectance: '+FloatToStr(pRefl));}
 	CalculateRDiffuseBeamData:=True;
 end;
 
@@ -1271,18 +1251,15 @@ begin
 	end
 	else
 	begin
-		for i:=-15 to 15 do
-			for j:=-15 to 15 do
+		for i:=-20 to 20 do
+			for j:=-20 to 20 do
+      {if (i mod 2=0) and (j mod 2=0) then}
 			begin
 				cx:=i+XOffset;
 				cy:=j-YOffset;
-				if Sqr(i)+Sqr(j)<Sqr(BeamRadius) then
+				if Sqr(i{+90*Sin(DetAngle)})+Sqr(j)<Sqr(BeamRadius) then
 				begin
 					// Calculate Si angle, mirror normal, polarisation vectors, and Si normal at detector angle
-					{if (cx=0) and (cy=0) then
-						PrintC:=True
-					else
-						PrintC:=False;}
           siAngles:=CalculateSiAngle(DetAngle,cx,cy,mirrorNormal,diodeNormal,beamVector1,beamVector2,beamVector3);
 					siIncidentAngle:=siAngles[1];
           mirrorAngle:=siAngles[2];
@@ -1291,12 +1268,16 @@ begin
           avgDiodeAngle:=avgDiodeAngle+siIncidentAngle;
           Inc(ind);
 				end;
+        {else
+        begin
+          Write(fl,Pol);
+          Writeln(fl);
+        end;}
 			end;
 	end;
   avgDiodeAngle:=avgDiodeAngle*180/Pi/ind;
   sRefl:=CalculateCompoundReflectanceDiode(Lambda,Thickness,avgDiodeAngle*Pi/180,'s');
   pRefl:=CalculateCompoundReflectanceDiode(Lambda,Thickness,avgDiodeAngle*Pi/180,'p');
-  {ShowMessage('Collimated: '+FloatToStr(avgDiodeAngle)+' s Reflectance: '+FloatToStr(sRefl)+' p Reflectance: '+FloatToStr(pRefl));}
 	CalculateRCollimated:=absorbance/perfectBeam;
 end;
 

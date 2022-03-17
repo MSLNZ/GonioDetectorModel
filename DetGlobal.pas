@@ -11,8 +11,8 @@ const
 	MaxColumns=9;
 	MaxPoints=1001;
 	MaxParameters=4;
-	Directory='I:\MSL\Private\Temperature\Software Archive\Ellie\Detector Model\Beam Imaging\LDLS\12 October\';
-	Date='12 October';
+	Directory='I:\MSL\Private\Temperature\Software Archive\Ellie\Detector Model\Beam Imaging\Supercontinuum\19 October\';
+	Date='19 October';
 
 type
 	TCellFormat=(gen,deci,sci);
@@ -45,6 +45,7 @@ var
 	Stopped,Failed,BeamData,OffsetP,Polar:Boolean;
 	IsDirty,IsNewFile,FirstStart,Autosave,Started,Paused:Boolean;
 	NGauLeg:Integer;
+  fl:TextFile;
 
 implementation
 	
