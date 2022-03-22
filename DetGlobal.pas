@@ -6,7 +6,7 @@ uses
 	Windows, StdCtrls, Forms, SysUtils, Math, Dialogs;
 
 const
-	ThisSoftwareVersion='1.05';
+	ThisSoftwareVersion='1.06';
 	MaxPastFileNames=9;
 	MaxColumns=9;
 	MaxPoints=1001;

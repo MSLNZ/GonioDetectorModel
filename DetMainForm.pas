@@ -741,8 +741,8 @@ begin
 	thisYOffset:=CheckValidInput(DiffuseYOffsetEdit,'Y offset','mm',-20,20,Valid);
 	DiffusePitch:=CheckValidInput(DiffusePitchEdit,'Pitch','°',-180,180,Valid);
   IncludeMirrorRefl:=MirrorReflCheckBox.Checked;
-  {AssignFile(fl,'Output.txt');
-	Rewrite(fl);}
+  AssignFile(fl,'Output.txt');
+	Rewrite(fl);
 	if OffsetP then
 		POffsetSize:=CheckValidInput(DiffusePOffsetEdit,'P offset','mm',-10,10,Valid)
 	else
@@ -797,8 +797,8 @@ begin
 							end;
 							if Valid and Started then
 							begin
-								thisRCollimatedS:=CalculateRCollimated(thisLambda,Thickness,0{thisDetAngle},thisXOffset,thisYOffset,'s',BeamData);
-								thisRCollimatedP:=CalculateRCollimated(thisLambda,Thickness,0{thisDetAngle},thisXOffset+POffsetSize,thisYOffset+POffsetSize,'p',BeamData);
+								thisRCollimatedS:=CalculateRCollimated(thisLambda,Thickness,{0}thisDetAngle,thisXOffset,thisYOffset,'s',BeamData);
+								thisRCollimatedP:=CalculateRCollimated(thisLambda,Thickness,{0}thisDetAngle,thisXOffset+POffsetSize,thisYOffset+POffsetSize,'p',BeamData);
 								if BeamData then
 								begin
 									ratioS:=thisRCollimatedS/rDiffuseS;
@@ -840,7 +840,7 @@ begin
 			end;
 		end;
 	end;
-  {CloseFile(fl);}
+  CloseFile(fl);
 end;
 
 procedure TMainForm.CalculateAllViewFactors(var Valid:Boolean);
@@ -1488,8 +1488,8 @@ var
 		StrPCopy(S1,S);
 		theStream.WriteBuffer(S1^,theLength);}
     oString:=UTF8String(S);
-    len:=length(oString);
-    theStream.WriteBuffer(len,4);
+    len:=Length(oString);
+    theStream.WriteBuffer(len,Sizeof(len));
     if len>0 then
       theStream.WriteBuffer(oString[1],len);
 	end;

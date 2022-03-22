@@ -9,6 +9,7 @@ type
 	T2Array=array[1..2] of Extended;
 	T4Array=array[1..4] of Extended;
 	TBeamArray=array[-15..15,-15..15] of Extended;
+  TReflectanceArray=array[1..3,1..35] of Extended;
 
 function SnellsLaw(N1,N2,Theta1:Extended):Extended;
 function SnellsLawComplex(N1,N2,Theta1:ComplexNumber):ComplexNumber;
@@ -33,6 +34,7 @@ procedure CreateRotationMatrix2(Angle:Extended;Axis:TVector;var R:TMatrix);
 procedure CreateSiRefractiveIndexTable;
 procedure CreateAlRefractiveIndexTable;
 procedure ReadBeamFile(FileS,FileP:string;var Valid:Boolean);
+procedure ReadMirrorReflectanceFile(MirrorReflectanceFile:string;var Valid:Boolean);
 
 const
 	R1=650;
@@ -47,6 +49,7 @@ var
 	Error:Boolean;
 	ErrorString:string;
 	SBeam,PBeam:TBeamArray;
+  MirrorReflectanceData:TReflectanceArray;
 	PrintC:Boolean;
   {f:Textfile;}
 
@@ -222,6 +225,51 @@ begin
 	alImLambda:=AlImaginary[lower]-(imaginaryDiff*ratio);
 	n:=MakeComplex(alRealLambda,alImLambda);
 	FindAlRefractiveIndex:=n;
+end;
+
+{.......................................................}
+
+function FindMirrorReflectance(IncidentAngle:Extended;Pol:string):Extended;
+var
+	i,j,lower,upper:Integer;
+	gradient,reflectance:Extended;
+	finished:Boolean;
+begin
+	finished:=False;
+  if Pol='s' then
+    j:=2
+  else
+    j:=3;
+  if IncidentAngle>20 then
+    Exit   // Can't deal with angles greater than 20
+  else
+    if IncidentAngle<3 then
+    begin
+      // Extrapolate curve for smaller angle using gradient between first two points
+      lower:=1;
+      upper:=2;
+    end
+    else
+    begin
+	    // Find two angles either side of the incident angle
+      for i:=1 to 35 do
+      begin
+
+        if not finished then
+        begin
+          if MirrorReflectanceData[1,i]>IncidentAngle then
+          begin
+            lower:=i-1;
+            upper:=i;
+            finished:=True;
+          end;
+        end;
+      end;
+    end;
+    // Interpolate between the closest two points to calculate reflectance for given angle
+    gradient:=(MirrorReflectanceData[j,upper]-MirrorReflectanceData[j,lower])/(MirrorReflectanceData[1,upper]-MirrorReflectanceData[1,lower]);
+    reflectance:=MirrorReflectanceData[j,lower]+gradient*(IncidentAngle-MirrorReflectanceData[1,lower]);
+    FindMirrorReflectance:=reflectance;
 end;
 
 {.......................................................}
@@ -489,13 +537,13 @@ var
 	rotateBeam,r:TMatrix;
 	i:Integer;
 begin
-	o[1]:=C1;
+	o[1]:=C1+90*Sin(DetectorAngle);
 	o[2]:=0;
 	o[3]:=C2;
 	s[1]:=-Rc*Sin(MirrorAngle);
 	s[2]:=R1-Rc*Cos(MirrorAngle);
 	s[3]:=Rc*Sin(MirrorAngle);
-	a[1]:=C1{+90*Sin(DetectorAngle)};
+	a[1]:=C1;
 	a[3]:=C2;
 	a[2]:=Sqrt(Sqr(Rc)-Sqr(s[1]-a[1])-Sqr(s[3]-a[3]))+s[2];
 	theta1:=AngleBetweenThreePoints(o,a,s);
@@ -512,7 +560,7 @@ begin
 	nVector:=NormaliseVector(nVector);
 	for i:=1 to 3 do
 		n[i]:=e[i]+nVector[i];
-	if DetectorAngle<>0 then
+	{if DetectorAngle<>0 then
 	begin
 		CreateRotationMatrix(DetectorAngle,'z',r);
 		s:=MatrixMultiplication(r,s);
@@ -529,7 +577,7 @@ begin
 		for i:=1 to 3 do
 			e[i]:=a[i]+t*eVector[i];
 		n:=VectorAddition(e,nVector);
-	end;
+	end;}
 	theta2:=AngleBetweenThreePoints(a,e,n);
 	MirrorNormal:=sVector;
 	DiodeNormal:=nVector;
@@ -658,11 +706,11 @@ begin
   else
   	absorbance:=Abs(cDiode[1])*absorbanceS+Abs(cDiode[2])*absorbanceP;
 	CalculateAbsorbance:=absorbance;
-  {if PrintC then
+  if PrintC then
   begin
-    Write(fl,Pol,#9,Theta*180/Pi,#9,absorbance,#9,Abs(cDiode[1]),#9,Abs(cDiode[2]));
+    Write(fl,Pol,#9,Theta*180/Pi,#9,MirrorTheta*180/Pi,#9,absorbance,#9,Abs(cDiode[1]),#9,Abs(cDiode[2]),#9,Abs(cMirror[1]));
     Writeln(fl);
-  end;}
+  end;
 end;
 
 {.......................................................}
@@ -1251,13 +1299,13 @@ begin
 	end
 	else
 	begin
-		for i:=-20 to 20 do
-			for j:=-20 to 20 do
-      {if (i mod 2=0) and (j mod 2=0) then}
+		for j:=-20 to 20 do
+			for i:=-20 to 20 do
+      if (i mod 2=0) and (j mod 2=0) then
 			begin
 				cx:=i+XOffset;
 				cy:=j-YOffset;
-				if Sqr(i{+90*Sin(DetAngle)})+Sqr(j)<Sqr(BeamRadius) then
+				if Sqr(i+90*Sin(DetAngle))+Sqr(j)<Sqr(BeamRadius) then
 				begin
 					// Calculate Si angle, mirror normal, polarisation vectors, and Si normal at detector angle
           siAngles:=CalculateSiAngle(DetAngle,cx,cy,mirrorNormal,diodeNormal,beamVector1,beamVector2,beamVector3);
@@ -1267,18 +1315,58 @@ begin
 					perfectBeam:=perfectBeam+1;
           avgDiodeAngle:=avgDiodeAngle+siIncidentAngle;
           Inc(ind);
-				end;
-        {else
+				end
+        else
         begin
           Write(fl,Pol);
           Writeln(fl);
-        end;}
+        end;
 			end;
 	end;
   avgDiodeAngle:=avgDiodeAngle*180/Pi/ind;
   sRefl:=CalculateCompoundReflectanceDiode(Lambda,Thickness,avgDiodeAngle*Pi/180,'s');
   pRefl:=CalculateCompoundReflectanceDiode(Lambda,Thickness,avgDiodeAngle*Pi/180,'p');
 	CalculateRCollimated:=absorbance/perfectBeam;
+end;
+
+{.......................................................}
+
+procedure ReadMirrorReflectanceFile(MirrorReflectanceFile:string;var Valid:Boolean);
+
+	procedure ReadFile(FileName:string;var ReflectanceData:TReflectanceArray);
+	var
+		f:TextFile;
+		S:string;
+		i,pos1:Integer;
+	begin
+		if FileExists(FileName) then
+		begin
+			AssignFile(f,FileName);
+			Reset(f);
+      Readln(f,S); // Read first line, with titles. Ignore this line.
+			for i:=1 to 35 do
+      begin
+        Readln(f,S);
+        pos1:=Pos(#9,S);
+        ReflectanceData[1,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the incident angle
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        ReflectanceData[2,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the s Reflectance
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        ReflectanceData[3,i]:=StrToFloat(Copy(S,1,Length(S))); // Save the p Reflectance
+      end;
+			CloseFile(f);
+			Valid:=True;
+		end
+		else
+		begin
+			ShowMessage('The file "'+FileName+'" doesn''t exist.');
+			Valid:=False;
+		end;
+	end;
+
+begin
+	ReadFile(MirrorReflectanceFile,MirrorReflectanceData);
 end;
 
 {.......................................................}
