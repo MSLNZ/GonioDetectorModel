@@ -741,13 +741,14 @@ begin
 	thisYOffset:=CheckValidInput(DiffuseYOffsetEdit,'Y offset','mm',-20,20,Valid);
 	DiffusePitch:=CheckValidInput(DiffusePitchEdit,'Pitch','°',-180,180,Valid);
   IncludeMirrorRefl:=MirrorReflCheckBox.Checked;
+  ReadMirrorReflectanceFile('G:\Shared drives\MSL - Photometry & Radiometry\STANDARDS\GonioSpectrometry\Software\Detector Model\MirrorReflectance560.txt',Valid);
   AssignFile(fl,'Output.txt');
 	Rewrite(fl);
 	if OffsetP then
 		POffsetSize:=CheckValidInput(DiffusePOffsetEdit,'P offset','mm',-10,10,Valid)
 	else
 		POffsetSize:=0;
-	if valid and Started then
+	if Valid and Started then
 	begin
 		CreateSiRefractiveIndexTable;
     CreateAlRefractiveIndexTable;
@@ -797,8 +798,8 @@ begin
 							end;
 							if Valid and Started then
 							begin
-								thisRCollimatedS:=CalculateRCollimated(thisLambda,Thickness,{0}thisDetAngle,thisXOffset,thisYOffset,'s',BeamData);
-								thisRCollimatedP:=CalculateRCollimated(thisLambda,Thickness,{0}thisDetAngle,thisXOffset+POffsetSize,thisYOffset+POffsetSize,'p',BeamData);
+								thisRCollimatedS:=CalculateRCollimated(thisLambda,Thickness,0{thisDetAngle},thisXOffset,thisYOffset,'s',BeamData);
+								thisRCollimatedP:=CalculateRCollimated(thisLambda,Thickness,0{thisDetAngle},thisXOffset+POffsetSize,thisYOffset+POffsetSize,'p',BeamData);
 								if BeamData then
 								begin
 									ratioS:=thisRCollimatedS/rDiffuseS;

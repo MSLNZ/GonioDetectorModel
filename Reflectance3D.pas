@@ -18,6 +18,7 @@ function CalculateQzReflectance(Theta1,Lambda:Extended;Pol:string):Extended;
 function CalculateSiOTransmittance(Theta1,Lambda:Extended;Pol:string):Extended;
 function FindSiRefractiveIndex(Lambda:Extended):ComplexNumber;
 function FindAlRefractiveIndex(Lambda:Extended):ComplexNumber;
+function FindMirrorReflectance(IncidentAngle:Extended;Pol:string):Extended;
 {function CalculateCompoundReflectance(Lambda,Thickness,Theta1:Extended;Pol:string):Extended;}
 function CalculateCompoundReflectance(Lambda,N1,Thickness,Theta1:Extended;N2,N3:ComplexNumber;Pol:string):Extended;
 function CalculatePolarisationRatio(PolVector,SurfaceNormal,BeamVector:TVector):T2Array;
@@ -393,14 +394,22 @@ end;
 
 function CalculateCompoundReflectanceMirror(Lambda,Thickness,Theta1:Extended;Pol:string):Extended;
 var
-	n1,n2,refl:Extended;
+	n1,n2,refl,thetaDeg:Extended;
 	n2C,n3:ComplexNumber;
 begin
-	n1:=1.0003;
-	n2:=CalculateQzRefractiveIndex(Lambda);
-	n2C:=MakeComplex(n2,0);
-	n3:=FindAlRefractiveIndex(Lambda);
-  refl:=CalculateCompoundReflectance(Lambda,n1,Thickness,Theta1,n2C,n3,Pol);
+  if Lambda=560 then // Read reflectance value instead of calculating
+  begin
+    thetaDeg:=Theta1*180/Pi;
+    refl:=FindMirrorReflectance(thetaDeg,Pol);
+  end
+  else
+  begin
+    n1:=1.0003;
+    n2:=CalculateQzRefractiveIndex(Lambda);
+    n2C:=MakeComplex(n2,0);
+    n3:=FindAlRefractiveIndex(Lambda);
+    refl:=CalculateCompoundReflectance(Lambda,n1,Thickness,Theta1,n2C,n3,Pol);
+  end;
   CalculateCompoundReflectanceMirror:=refl;
 end;
 
@@ -1301,7 +1310,7 @@ begin
 	begin
 		for j:=-20 to 20 do
 			for i:=-20 to 20 do
-      if (i mod 2=0) and (j mod 2=0) then
+      {if (i mod 2=0) and (j mod 2=0) then}
 			begin
 				cx:=i+XOffset;
 				cy:=j-YOffset;
