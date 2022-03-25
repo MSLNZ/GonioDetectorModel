@@ -1,7 +1,7 @@
 unit Reflectance3D;
 
 interface
-                  {does this go to GitHub?}
+
 uses
 	SysUtils, Classes, Math, ComplexNumbers, Dialogs, LinearAlgebra, Forms;
 
@@ -10,6 +10,7 @@ type
 	T4Array=array[1..4] of Extended;
 	TBeamArray=array[-15..15,-15..15] of Extended;
   TReflectanceArray=array[1..3,1..35] of Extended;
+  TMeasuredDataArray=array[1..19,1..275] of Extended;
 
 function SnellsLaw(N1,N2,Theta1:Extended):Extended;
 function SnellsLawComplex(N1,N2,Theta1:ComplexNumber):ComplexNumber;
@@ -36,6 +37,7 @@ procedure CreateSiRefractiveIndexTable;
 procedure CreateAlRefractiveIndexTable;
 procedure ReadBeamFile(FileS,FileP:string;var Valid:Boolean);
 procedure ReadMirrorReflectanceFile(MirrorReflectanceFile:string;var Valid:Boolean);
+procedure ReadMeasuredData(var Valid:Boolean);
 
 const
 	R1=650;
@@ -51,6 +53,7 @@ var
 	ErrorString:string;
 	SBeam,PBeam:TBeamArray;
   MirrorReflectanceData:TReflectanceArray;
+  MeasuredData:TMeasuredDataArray;
 	PrintC:Boolean;
   {f:Textfile;}
 
@@ -685,8 +688,10 @@ var
 	 polVector1,polVector2:TVector;
 	 cMirror,cDiode:T2Array;
 	 qzWindowTransmittanceS,qzWindowTransmittanceP,siReflectanceS,siReflectanceP:Extended;
-	 mirrorReflectanceP,mirrorReflectanceS,mirrorRefl:Extended;
-   absorbanceS,absorbanceP,absorbance:Extended;
+	 mirrorReflectanceP,mirrorReflectanceS,mirrorRefl,minDistance:Extended;
+   absorbanceS,absorbanceP,absorbance,thisDistance:Extended;
+   i,wavelengthInd,minInd:Integer;
+   thisMirrorTheta,thisMirrorCs,thisDiodeTheta,thisDiodeCs:Extended;
 begin
 	if Pol='s' then
 	begin
@@ -703,7 +708,7 @@ begin
 	cMirror:=CalculatePolarisationRatio(polVector1,MirrorNormal,BeamVector1);
 	polVector2:=PolarisationVector(cMirror,MirrorNormal,BeamVector2);
 	cDiode:=CalculatePolarisationRatio(polVector2,SiNormal,BeamVector3);
-  mirrorReflectanceP:=CalculateCompoundReflectanceMirror(Lambda,205,MirrorTheta,'p');
+  {mirrorReflectanceP:=CalculateCompoundReflectanceMirror(Lambda,205,MirrorTheta,'p');
   mirrorReflectanceS:=CalculateCompoundReflectanceMirror(Lambda,205,MirrorTheta,'s');
   mirrorRefl:=Abs(cMirror[1])*mirrorReflectanceS+Abs(cMirror[2])*mirrorReflectanceP;
 	siReflectanceP:=CalculateCompoundReflectanceDiode(Lambda,Thickness,Theta,'p');
@@ -719,7 +724,66 @@ begin
   begin
     Write(fl,Pol,#9,Theta*180/Pi,#9,MirrorTheta*180/Pi,#9,absorbance,#9,Abs(cDiode[1]),#9,Abs(cDiode[2]),#9,Abs(cMirror[1]));
     Writeln(fl);
+  end;}
+
+  // Using cMirror[1], cDiode[1], MirrorTheta, Theta (diodeTheta), find closest
+  //point in 4-D space from measured data and use that value as absorbance
+
+  // sqrt sum squares of distances. go through each option and find smallest
+  minDistance:=10000;
+
+  {	case XVariable of
+		DetAngle:
+			begin
+				DetectorAngleRadioButton.Checked:=True;
+				OtherParameter1Label.Caption:='x-Offset:';
+				OtherParameter2Label.Caption:='y-Offset:';
+			end;
+		XOffset:
+			begin
+				XOffsetRadioButton.Checked:=True;
+				OtherParameter1Label.Caption:='Detector angle:';
+				OtherParameter1Edit.Text:='180';
+				OtherParameter2Label.Caption:='y-Offset:';
+			end;
+		YOffset:
+			begin
+				YOffsetRadioButton.Checked:=True;
+				OtherParameter1Label.Caption:='Detector angle:';
+				OtherParameter1Edit.Text:='180';
+				OtherParameter2Label.Caption:='x-Offset:';
+			end;
+	end;}
+
+  if Lambda=560 then
+    wavelengthInd:=5
+  else
+    if Lambda<490 then
+      wavelengthInd:=Round(Lambda/20-12)
+    else
+      wavelengthInd:=Round(Lambda/50+2.4);
+
+  {if Lambda=360 then
+    wavelengthInd:=5
+  else
+    wavelengthInd:=6;}
+
+  for i:=1 to 275 do
+  begin
+    thisMirrorTheta:=MeasuredData[1,i];
+    thisMirrorCs:=MeasuredData[2,i];
+    thisDiodeTheta:=MeasuredData[3,i];
+    thisDiodeCs:=MeasuredData[4,i];
+    thisDistance:=Sqrt(Sqr(MirrorTheta-thisMirrorTheta)+Sqr(cMirror[1]-thisMirrorCs)+Sqr(Theta-thisDiodeTheta)+Sqr(cDiode[1]-thisDiodeCs));
+    if thisDistance<minDistance then
+    begin
+      minDistance:=thisDistance;
+      minInd:=i;
+    end;
   end;
+  absorbance:=MeasuredData[wavelengthInd,minInd];
+  CalculateAbsorbance:=absorbance;
+
 end;
 
 {.......................................................}
@@ -1324,12 +1388,12 @@ begin
 					perfectBeam:=perfectBeam+1;
           avgDiodeAngle:=avgDiodeAngle+siIncidentAngle;
           Inc(ind);
-				end
+				end{
         else
         begin
           Write(fl,Pol);
           Writeln(fl);
-        end;
+        end};
 			end;
 	end;
   avgDiodeAngle:=avgDiodeAngle*180/Pi/ind;
@@ -1376,6 +1440,98 @@ procedure ReadMirrorReflectanceFile(MirrorReflectanceFile:string;var Valid:Boole
 
 begin
 	ReadFile(MirrorReflectanceFile,MirrorReflectanceData);
+end;
+
+{.......................................................}
+
+procedure ReadMeasuredData(var Valid:Boolean);
+var
+  fileName:string;
+
+	procedure ReadFile(FileName:string;var MeasuredData:TMeasuredDataArray);
+	var
+		f:TextFile;
+		S:string;
+		i,pos1:Integer;
+	begin
+		if FileExists(FileName) then
+		begin
+			AssignFile(f,FileName);
+			Reset(f);
+      Readln(f,S); // Read first line, with titles. Ignore this line.
+			for i:=1 to 275 do
+      begin
+        Readln(f,S);
+        pos1:=Pos(#9,S);
+        MeasuredData[1,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the mirror angle
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[2,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the mirror Cs
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[3,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the diode angle
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[4,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the diode Cs
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[5,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the 560 nm absorbance
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[6,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the 360 nm absorbance
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[7,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the 380 nm absorbance
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[8,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the 400 nm absorbance
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[9,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the 420 nm absorbance
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[10,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the 440 nm absorbance
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[11,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the 460 nm absorbance
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[12,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the 480 nm absorbance
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[13,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the 530 nm absorbance
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[14,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the 580 nm absorbance
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[15,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the 630 nm absorbance
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[16,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the 680 nm absorbance
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[17,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the 730 nm absorbance
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[18,i]:=StrToFloat(Copy(S,1,pos1-1)); // Save the 780 nm absorbance
+        S:=Copy(S,pos1+1,Length(S)-pos1);
+        pos1:=Pos(#9,S);
+        MeasuredData[19,i]:=StrToFloat(Copy(S,1,Length(S))); // Save the 830 nm absorbance
+      end;
+			CloseFile(f);
+			Valid:=True;
+		end
+		else
+		begin
+			ShowMessage('The file "'+FileName+'" doesn''t exist.');
+			Valid:=False;
+		end;
+	end;
+
+begin
+  fileName:='G:\Shared drives\MSL - Photometry & Radiometry\STANDARDS\GonioSpectrometry\Software\Detector Model\MeasuredAbsorbances.txt';
+	ReadFile(fileName,MeasuredData);
 end;
 
 {.......................................................}

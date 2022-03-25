@@ -742,8 +742,9 @@ begin
 	DiffusePitch:=CheckValidInput(DiffusePitchEdit,'Pitch','°',-180,180,Valid);
   IncludeMirrorRefl:=MirrorReflCheckBox.Checked;
   ReadMirrorReflectanceFile('G:\Shared drives\MSL - Photometry & Radiometry\STANDARDS\GonioSpectrometry\Software\Detector Model\MirrorReflectance560.txt',Valid);
-  AssignFile(fl,'Output.txt');
-	Rewrite(fl);
+  ReadMeasuredData(Valid);
+  {AssignFile(fl,'Output.txt');
+	Rewrite(fl);}
 	if OffsetP then
 		POffsetSize:=CheckValidInput(DiffusePOffsetEdit,'P offset','mm',-10,10,Valid)
 	else
@@ -841,7 +842,7 @@ begin
 			end;
 		end;
 	end;
-  CloseFile(fl);
+  {CloseFile(fl);}
 end;
 
 procedure TMainForm.CalculateAllViewFactors(var Valid:Boolean);
