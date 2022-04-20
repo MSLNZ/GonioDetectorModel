@@ -1163,13 +1163,14 @@ var
 	sampleVector,sampleNormal,detVector,lengthVector,mirrorPos:TVector;
 	mirrorNormal,diodeNormal,beamVector1,beamVector2,beamVector3:TVector;
 	r:TMatrix;
-	sAbsorbance,pAbsorbance,perfectBeam,mirrorAngle:Extended;
+	sAbsorbance,pAbsorbance,perfectBeam,mirrorAngle,cos45:Extended;
   siAngles:TVector;
 begin
 	sAbsorbance:=0;
 	pAbsorbance:=0;
 	perfectBeam:=0;
   PrintC:=False;
+  cos45:=Cos(45*Pi/180);
 	// Iterate through all points in sample beam and all points in detector
 	for i:=-20 to 20 do
 		for j:=-20 to 20 do
@@ -1177,6 +1178,7 @@ begin
 			cxi:=i;
 			cyi:=j;
 			if Sqr(cxi)+Sqr(cyi)<=Sqr(BeamRadius) then
+      {if Sqr(cxi/(BeamRadius/cos45))+Sqr(cyi/BeamRadius)<=1 then}
 			begin
 				// Rotate pitch
 				if DiffusePitch<>0 then

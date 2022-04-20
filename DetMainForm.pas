@@ -780,7 +780,7 @@ begin
 					for i:=1 to lastRow do
 					begin
 						thisLambda:=StrToFloat(DataSpreadsheet.StringGrid.Cells[1,i]);
-						thisDetAngleDeg:=StrToFloat(DataSpreadsheet.StringGrid.Cells[2,i]);
+						thisDetAngleDeg:=-StrToFloat(DataSpreadsheet.StringGrid.Cells[2,i]);
 						thisDetAngle:=thisDetAngleDeg*Pi/180;
 						if Started then
 						begin
